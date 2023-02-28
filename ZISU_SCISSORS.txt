@@ -1,0 +1,422 @@
+REPORT ZISU_POWER_5.
+
+TYPES:
+  tt_cell TYPE TABLE OF char1 WITH EMPTY KEY,
+  tt_board TYPE TABLE OF tt_cell WITH EMPTY KEY.
+
+CLASS cl_board DEFINITION.
+  PUBLIC SECTION.
+*Разрезать доску
+    METHODS cut IMPORTING im_method_cut TYPE n.
+*Повернуть доску вправо
+    METHODS turn IMPORTING im_no TYPE i.
+*Сдвинуть ячейки
+    METHODS shift IMPORTING im_no TYPE i im_up TYPE flag im_left TYPE flag .
+*Объединить доски
+    METHODS combine IMPORTING im_up1 TYPE flag im_left1 TYPE flag im_up2 TYPE flag im_left2 TYPE flag.
+*Проверить на перекрытие
+    METHODS isCorrect IMPORTING im_no TYPE i im_up TYPE flag im_left TYPE flag RETURNING VALUE(rc_success) TYPE flag.
+*Конструктор
+    METHODS constructor IMPORTING im_size TYPE i.
+    METHODS get_board IMPORTING im_no TYPE i EXPORTING ex_board_t TYPE tt_board.
+
+    DATA: g_size TYPE i.
+  PROTECTED SECTION.
+    DATA: it_board TYPE tt_board.
+    DATA: it_board1 TYPE tt_board.
+    DATA: it_board2 TYPE tt_board.
+ENDCLASS.
+
+CLASS cl_board IMPLEMENTATION.
+  METHOD constructor.
+    g_size = im_size.
+  ENDMETHOD.
+
+  METHOD cut.
+    DATA: x TYPE i,
+          y TYPE i.
+
+    REFRESH it_board1.
+*Формируем первую доску
+    DO g_size TIMES.
+      APPEND INITIAL LINE TO it_board1 ASSIGNING FIELD-SYMBOL(<fs_tab>).
+      x = sy-index.
+      DO g_size TIMES.
+        APPEND INITIAL LINE TO <fs_tab>.
+        y = sy-index.
+        DATA(pos) = y - 1.
+        DATA(value) = x + y.
+        IF value <= im_method_cut+pos(1).
+          it_board1[ x ][ y ] = 1.
+        ENDIF.
+      ENDDO.
+    ENDDO.
+
+*формируем вторую доску как зеркальное отображение первой
+    DO g_size TIMES.
+      APPEND INITIAL LINE TO it_board1 ASSIGNING <fs_tab>.
+      x = sy-index.
+      DO g_size TIMES.
+        APPEND INITIAL LINE TO <fs_tab>.
+        y = sy-index.
+        IF it_board1[ x ][ y ] IS INITIAL.
+          it_board2[ x ][ y ] = 1.
+        ENDIF.
+      ENDDO.
+    ENDDO.
+  ENDMETHOD.
+
+  METHOD turn.
+    DATA: x TYPE i,
+          y TYPE i.
+    DATA: tmp_board TYPE tt_board.
+    FIELD-SYMBOLS: <fs_tab> TYPE tt_board.
+    IF im_no = 1.
+      ASSIGN it_board1 TO <fs_tab>.
+    ELSEIF im_no = 2.
+      ASSIGN it_board2 TO <fs_tab>.
+    ELSE.
+      EXIT.
+    ENDIF.
+    LOOP AT <fs_tab> INTO DATA(wa_tab).
+      x = sy-tabix.
+      LOOP AT wa_tab INTO DATA(wa_str).
+        y = sy-tabix.
+        tmp_board[ y ][ 1 + g_size - x ] = wa_str.
+      ENDLOOP.
+    ENDLOOP.
+    <fs_tab> = tmp_board.
+  ENDMETHOD.
+
+  METHOD shift.
+
+    FIELD-SYMBOLS: <fs_tab> TYPE tt_board.
+    IF im_no = 1.
+      ASSIGN it_board1 TO <fs_tab>.
+    ELSEIF im_no = 2.
+      ASSIGN it_board2 TO <fs_tab>.
+    ELSE.
+      EXIT.
+    ENDIF.
+
+    DATA:
+      x TYPE i,
+      y TYPE i,
+      index_column TYPE i,
+      index_row TYPE i.
+
+    DATA: filling_column TYPE n LENGTH 10,
+          filling_row TYPE n LENGTH 10.
+
+    LOOP AT <fs_tab> INTO DATA(wa_tab).
+      x = sy-tabix.
+      LOOP AT wa_tab INTO DATA(wa_str).
+        y = sy-tabix.
+        IF wa_str IS NOT INITIAL.
+          index_row = x - 1.
+          index_column = y - 1.
+          filling_row+index_row(1) = 1.
+          filling_column+index_column(1) = 1.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+*    DATA: count_not_space_column TYPE n LENGTH 10,
+*          count_not_space_row TYPE n LENGTH 10.
+*
+*    LOOP AT <fs_tab> INTO DATA(wa_tab).
+*      sy_tabix = sy-tabix.
+*      DO g_size TIMES.
+*        ASSIGN COMPONENT sy-index OF STRUCTURE wa_tab TO FIELD-SYMBOL(<fs_cell>).
+*        IF <fs_cell> IS NOT INITIAL.
+*          index_column = sy-index - 1.
+*
+*          ADD 1 TO count_not_space_column+index_column(1).
+*          index_row = sy_tabix - 1.
+*          ADD 1 TO count_not_space_row+index_row(1).
+*
+*        ENDIF.
+*      ENDDO.
+*    ENDLOOP.
+    DATA: shift_row TYPE i,
+          shift_column TYPE i.
+    IF im_left IS NOT INITIAL AND im_up IS INITIAL.
+*Влево вниз
+*Находим смещение
+      DO g_size TIMES.
+        index_row = g_size - sy-index.
+        IF filling_row+index_row(1) IS INITIAL.
+          SUBTRACT 1 FROM shift_row.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+      DO g_size TIMES.
+        index_column = sy-index - 1.
+        IF filling_column+index_column(1) IS INITIAL.
+          ADD 1 TO shift_column.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+*      DO g_size TIMES.
+*        x = sy-index.
+*        IF x - shift_row < 1.
+*          CONTINUE.
+*        ENDIF.
+*        DO g_size TIMES.
+*          y = sy-index.
+*          ex_board_t[ x ][ y ] = <fs_tab>[ x - shift_row  ][ y + shift_column ].
+*        ENDDO.
+*      ENDDO.
+    ELSEIF im_left IS INITIAL AND im_up IS INITIAL.
+*Вправо вниз
+*Находим смещение
+      DO g_size TIMES.
+        index_row = g_size - sy-index.
+        IF filling_row+index_row(1) IS INITIAL.
+          ADD 1 TO shift_row.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+      DO g_size TIMES.
+        index_column = g_size - sy-index.
+        IF filling_column+index_column(1) IS INITIAL.
+          ADD 1 TO shift_column.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+*Смещаем
+*      DO g_size TIMES.
+*        x = sy-index.
+*        IF x - shift_row < 1.
+*          CONTINUE.
+*        ENDIF.
+*        DO g_size TIMES.
+*          y = sy-index.
+*          IF y - shift_row < 1.
+*            CONTINUE.
+*          ENDIF.
+*          ex_board_t[ x ][ y ] = <fs_tab>[ x - shift_row  ][ y - shift_column ].
+*        ENDDO.
+*      ENDDO.
+    ELSEIF im_left IS NOT INITIAL AND im_up IS NOT INITIAL.
+*Влево вверх
+*Находим смещение
+      DO g_size TIMES.
+        index_row = sy-index - 1.
+        IF filling_row+index_row(1) IS INITIAL.
+          ADD 1 TO shift_row.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+      DO g_size TIMES.
+        index_column = sy-index - 1.
+        IF filling_column+index_column(1) IS INITIAL.
+          ADD 1 TO shift_column.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+*Смещаем
+*      DO g_size TIMES.
+*        x = sy-index.
+*        DO g_size TIMES.
+*          y = sy-index.
+*          ex_board_t[ x ][ y ] = <fs_tab>[ x + shift_row  ][ y + shift_column ].
+*        ENDDO.
+*      ENDDO.
+
+    ELSEIF im_left IS INITIAL AND im_up IS NOT INITIAL.
+*Вправо вверх
+*Находим смещение
+      DO g_size TIMES.
+        index_row = sy-index - 1.
+        IF filling_row+index_row(1) IS INITIAL.
+          ADD 1 TO shift_row.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+      DO g_size TIMES.
+        index_column = g_size - sy-index.
+        IF filling_column+index_column(1) IS INITIAL.
+          ADD 1 TO shift_column.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+*Смещаем
+*      DO g_size TIMES.
+*        x = sy-index.
+*        DO g_size TIMES.
+*          y = sy-index.
+*          IF y - shift_row < 1.
+*            CONTINUE.
+*          ENDIF.
+*          ex_board_t[ x ][ y ] = <fs_tab>[ x + shift_row  ][ y - shift_column ].
+*        ENDDO.
+*      ENDDO.
+    ENDIF.
+
+*Смещаем
+    DATA: tmp_board TYPE tt_board.
+    DO g_size TIMES.
+      x = sy-index.
+      IF x + shift_row < 1.
+        CONTINUE.
+      ENDIF.
+      DO g_size TIMES.
+        y = sy-index.
+        IF y + shift_column < 1.
+          CONTINUE.
+        ENDIF.
+        tmp_board[ x ][ y ] = <fs_tab>[ x + shift_row  ][ y + shift_column ].
+      ENDDO.
+    ENDDO.
+    <fs_tab> = tmp_board.
+  ENDMETHOD.
+
+  METHOD combine.
+    DATA: x TYPE i,
+          y TYPE i.
+    DO g_size TIMES.
+      x = sy-index.
+      DO g_size TIMES.
+        y = sy-index.
+        IF im_up1 IS INITIAL AND im_left1 IS INITIAL.
+          it_board[ x + 10 - g_size ][ y + 10 - g_size ] = it_board[ x + 10 - g_size ][ y + 10 - g_size ] + it_board1[ g_size + 1 - x ][ g_size + 1 - y ].
+        ELSEIF im_up1 IS INITIAL AND im_left1 IS NOT INITIAL.
+          it_board[ x + 10 - g_size ][ y ] = it_board[ x + 10 - g_size ][ y ] + it_board1[ g_size + 1 - x ][ y ].
+        ELSEIF im_up1 IS NOT INITIAL AND im_left1 IS INITIAL.
+          it_board[ x ][ y + 10 - g_size ] = it_board[ x ][ y + 10 - g_size ] + it_board1[ x ][ g_size + 1 - y ].
+        ELSE.
+          it_board[ x ][ y ] = it_board[ x ][ y ] + it_board1[ x ][ y ].
+        ENDIF.
+        IF im_up2 IS INITIAL AND im_left2 IS INITIAL.
+          it_board[ x + 10 - g_size ][ y + 10 - g_size ] = it_board[ x + 10 - g_size ][ y + 10 - g_size ] + it_board2[ g_size + 1 - x ][ g_size + 1 - y ].
+        ELSEIF im_up2 IS INITIAL AND im_left2 IS NOT INITIAL.
+          it_board[ x + 10 - g_size ][ y ] = it_board[ x + 10 - g_size ][ y ] + it_board2[ g_size + 1 - x ][ y ].
+        ELSEIF im_up2 IS NOT INITIAL AND im_left2 IS INITIAL.
+          it_board[ x ][ y + 10 - g_size ] = it_board[ x ][ y + 10 - g_size ] + it_board2[ x ][ g_size + 1 - y ].
+        ELSE.
+          it_board[ x ][ y ] = it_board[ x ][ y ] + it_board2[ x ][ y ].
+        ENDIF.
+      ENDDO.
+    ENDDO.
+  ENDMETHOD.
+  METHOD get_board.
+    CASE im_no.
+      WHEN 1.
+        ex_board_t = it_board1.
+      WHEN 2.
+        ex_board_t = it_board2.
+    ENDCASE.
+  ENDMETHOD.
+  METHOD isCorrect.
+    DATA: x TYPE i,
+          y TYPE i.
+    DATA: f_exist_value TYPE flag.
+
+    FIELD-SYMBOLS: <fs_tab> TYPE tt_board.
+    IF im_no = 1.
+      ASSIGN it_board1 TO <fs_tab>.
+    ELSEIF im_no = 2.
+      ASSIGN it_board2 TO <fs_tab>.
+    ELSE.
+      EXIT.
+    ENDIF.
+
+    rc_success = 'X'.
+    DO g_size TIMES.
+      IF im_up IS INITIAL.
+        x = g_size + 1 - sy-index.
+      ELSE.
+        x = sy-index.
+      ENDIF.
+      DO g_size TIMES.
+        IF im_left IS INITIAL.
+          y = g_size + 1 - sy-index.
+        ELSE.
+          y = sy-index.
+        ENDIF.
+
+        CLEAR f_exist_value.
+        IF <fs_tab>[ x ][ y ] IS NOT INITIAL.
+          f_exist_value = 'X'.
+        ENDIF.
+        IF it_board1[ x ][ y ] > 1 OR
+           ( f_exist_value IS NOT INITIAL AND <fs_tab>[ x ][ y ] IS INITIAL ).
+          CLEAR rc_success.
+          RETURN.
+        ENDIF.
+      ENDDO.
+    ENDDO.
+  ENDMETHOD.
+ENDCLASS.
+
+ START-OF-SELECTION.
+    DATA: method_cut1 TYPE n VALUE 6.
+    DATA: method_cut2 TYPE n VALUE 8.
+
+    DATA: board1 TYPE REF TO cl_board,
+          board2 TYPE REF TO cl_board.
+
+    DATA: it_board11 TYPE tt_board,
+          it_board12 TYPE tt_board,
+          it_board21 TYPE tt_board,
+          it_board22 TYPE tt_board.
+
+    CREATE OBJECT board1
+      EXPORTING im_size = 6.
+
+    CREATE OBJECT board2
+      EXPORTING im_size = 8.
+
+    DO 1000000 TIMES.
+      IF method_cut1 = 999999.
+        EXIT.
+      ENDIF.
+      CALL FUNCTION 'ZISU_INDICATOR'
+        EXPORTING
+*         S              = 'Идет обработка'
+          index          = sy-index
+          count          = 1000000
+          interval       = 100.
+
+      ADD 1 TO method_cut1.
+*Режем первую доску
+      board1->cut( im_method_cut = method_cut1 ).
+      board1->shift( im_no = 1 im_up = space im_left = space ).
+      CHECK board1->isCorrect( im_no = 1 im_up = space im_left = space ) IS NOT INITIAL.
+      board1->shift( im_no = 2 im_up = space im_left = 'X' ).
+      CHECK board1->isCorrect( im_no = 2 im_up = space im_left = 'X' ) IS NOT INITIAL.
+*      board1->combine( im_up = space im_left = space ).
+
+      DO 100000000 TIMES.
+        IF method_cut2 = 99999999.
+          EXIT.
+        ENDIF.
+        ADD 1 TO method_cut1.
+*Режем вторую доску
+        board2->cut( im_method_cut = method_cut2 ).
+
+      ENDDO.
+    ENDDO.
+
+*  METHOD check_all.
+*    DATA: x TYPE i,
+*          y TYPE i.
+*
+*    rc_success = 'X'.
+*    DO 10 TIMES.
+*      DO 10 TIMES.
+*        IF it_board[ x ][ y ] > 1.
+*          CLEAR rc_success.
+*          RETURN.
+*        ENDIF.
+*      ENDDO.
+*    ENDDO.
+*  ENDMETHOD.
